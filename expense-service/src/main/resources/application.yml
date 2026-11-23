@@ -1,0 +1,30 @@
+server:
+  port: 8082
+  tomcat:
+    threads:
+      max: 20
+
+spring:
+  application:
+    name: expense-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${EXPENSE_DB_NAME:expense_db}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DB_USER:tallyup}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD:tallyup_secret}}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    open-in-view: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
