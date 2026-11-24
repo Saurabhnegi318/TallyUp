@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   Receipt, 
@@ -16,8 +16,7 @@ import {
   ChevronRight,
   TrendingUp,
   TrendingDown,
-  CheckCircle2,
-  ChevronDown
+  CheckCircle2
 } from 'lucide-react';
 import { apiClient } from './api/client';
 
@@ -60,10 +59,11 @@ export type ExpenseCategory =
   | 'STAY'
   | 'TRAVEL'
   | 'FUEL'
-  | 'GENERAL';
+  | 'GENERAL'
+  | string;
 
 interface CategoryItem {
-  id: ExpenseCategory;
+  id: string;
   label: string;
   emoji: string;
   bg: string;
@@ -72,15 +72,15 @@ interface CategoryItem {
 }
 
 export const CATEGORIES: CategoryItem[] = [
+  { id: 'RESTAURANTS_BARS', label: 'Restaurants & Bars', emoji: '🍔', bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-800' },
+  { id: 'GROCERIES', label: 'Groceries', emoji: '🛒', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800' },
+  { id: 'TRANSPORT', label: 'Transport', emoji: '🚕', bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800' },
   { id: 'ACCOMMODATION', label: 'Accommodation', emoji: '🛌', bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-800' },
   { id: 'ENTERTAINMENT', label: 'Entertainment', emoji: '🎤', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800' },
-  { id: 'GROCERIES', label: 'Groceries', emoji: '🛒', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800' },
-  { id: 'HEALTHCARE', label: 'Healthcare', emoji: '🦷', bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800' },
-  { id: 'INSURANCE', label: 'Insurance', emoji: '🧯', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-800' },
-  { id: 'RENT', label: 'Rent and charges', emoji: '🏠', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800' },
-  { id: 'RESTAURANTS_BARS', label: 'Restaurants & Bars', emoji: '🍔', bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-800' },
+  { id: 'RENT', label: 'Rent & charges', emoji: '🏠', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800' },
   { id: 'SHOPPING', label: 'Shopping', emoji: '🛍️', bg: 'bg-pink-50', border: 'border-pink-200', text: 'text-pink-800' },
-  { id: 'TRANSPORT', label: 'Transport', emoji: '🚕', bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800' },
+  { id: 'HEALTHCARE', label: 'Healthcare', emoji: '🦷', bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800' },
+  { id: 'INSURANCE', label: 'Insurance', emoji: '🧯', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800' },
   { id: 'OTHER', label: 'Other', emoji: '✋', bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-800' },
 ];
 
@@ -145,27 +145,16 @@ export default function App() {
   const [newExpenseTitle, setNewExpenseTitle] = useState('');
   const [newExpenseAmount, setNewExpenseAmount] = useState('');
   const [newExpensePayer, setNewExpensePayer] = useState('');
-  const [newExpenseCategory, setNewExpenseCategory] = useState<ExpenseCategory>('RESTAURANTS_BARS');
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [newExpenseCategory, setNewExpenseCategory] = useState<string>('RESTAURANTS_BARS');
+  const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [newExpenseDate, setNewExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
   // Settle up modal
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [settlePayer, setSettlePayer] = useState('');
   const [settleReceiver, setSettleReceiver] = useState('');
   const [settleAmount, setSettleAmount] = useState('');
-
-  // Close category dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
-        setIsCategoryDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -288,6 +277,9 @@ export default function App() {
     try {
       const total = parseFloat(newExpenseAmount);
       const splitPayload = selectedGroup.members.map(m => ({ memberId: m.id }));
+      const finalCategory = isCustomCategoryMode && customCategoryInput.trim() 
+        ? customCategoryInput.trim().toUpperCase().replace(/\s+/g, '_')
+        : newExpenseCategory;
 
       await apiClient.post('/api/expenses', {
         groupId: selectedGroup.id,
@@ -295,7 +287,7 @@ export default function App() {
         title: newExpenseTitle.trim(),
         totalAmount: total,
         splitType: 'EQUAL',
-        category: newExpenseCategory,
+        category: finalCategory,
         expenseDate: newExpenseDate,
         splits: splitPayload,
       });
@@ -303,6 +295,8 @@ export default function App() {
       setShowAddExpenseModal(false);
       setNewExpenseTitle('');
       setNewExpenseAmount('');
+      setCustomCategoryInput('');
+      setIsCustomCategoryMode(false);
       setNewExpenseCategory('RESTAURANTS_BARS');
       loadGroupExpenses(selectedGroup.id);
       loadGroupBalances(selectedGroup.id);
@@ -354,14 +348,26 @@ export default function App() {
     return member ? member.displayName : 'Unknown';
   };
 
-  const getCategoryMeta = (cat: ExpenseCategory = 'OTHER'): CategoryItem => {
-    // Normalization for aliases
+  const getCategoryMeta = (cat: string = 'OTHER'): CategoryItem => {
     if (cat === 'FOOD') return CATEGORIES.find(c => c.id === 'RESTAURANTS_BARS')!;
     if (cat === 'STAY') return CATEGORIES.find(c => c.id === 'ACCOMMODATION')!;
     if (cat === 'TRAVEL' || cat === 'FUEL') return CATEGORIES.find(c => c.id === 'TRANSPORT')!;
     if (cat === 'GENERAL') return CATEGORIES.find(c => c.id === 'OTHER')!;
     
-    return CATEGORIES.find(c => c.id === cat) || CATEGORIES[CATEGORIES.length - 1];
+    const found = CATEGORIES.find(c => c.id === cat);
+    if (found) return found;
+
+    // Handle custom categories dynamically
+    const cleanLabel = cat.replace(/_/g, ' ').toLowerCase();
+    const formatted = cleanLabel.charAt(0).toUpperCase() + cleanLabel.slice(1);
+    return {
+      id: cat,
+      label: formatted,
+      emoji: '🏷️',
+      bg: 'bg-emerald-50',
+      border: 'border-emerald-200',
+      text: 'text-emerald-800'
+    };
   };
 
   const filteredExpenses = expenses.filter(exp => {
@@ -371,7 +377,6 @@ export default function App() {
   });
 
   const totalGroupSpend = expenses.reduce((acc, curr) => acc + (curr.totalAmount || 0), 0);
-  const activeCategoryMeta = getCategoryMeta(newExpenseCategory);
 
   // Auth Screen
   if (!currentUser) {
@@ -449,7 +454,7 @@ export default function App() {
             </div>
             <button
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-lg shadow-emerald-200 transition"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-lg shadow-emerald-200 transition cursor-pointer"
             >
               {isLoginMode ? 'Sign In' : 'Get Started'}
             </button>
@@ -502,7 +507,7 @@ export default function App() {
             </div>
             <button
               onClick={handleLogout}
-              className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-slate-100"
+              className="text-slate-400 hover:text-rose-600 transition p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
@@ -603,7 +608,7 @@ export default function App() {
                   </p>
                   <button
                     onClick={() => setShowCreateGroupModal(true)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition cursor-pointer"
                   >
                     + Create Your First Group
                   </button>
@@ -622,7 +627,7 @@ export default function App() {
                 <div className="flex items-start gap-3">
                   <button
                     onClick={() => setSelectedGroup(null)}
-                    className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 hover:text-slate-800 transition"
+                    className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 hover:text-slate-800 transition cursor-pointer"
                     title="Back to all groups"
                   >
                     <ArrowLeft className="w-5 h-5" />
@@ -639,7 +644,7 @@ export default function App() {
                       <span>•</span>
                       <button
                         onClick={() => handleCopyInvite(selectedGroup.inviteCode)}
-                        className="inline-flex items-center gap-1 font-mono text-emerald-700 hover:text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 px-2 py-0.5 rounded transition"
+                        className="inline-flex items-center gap-1 font-mono text-emerald-700 hover:text-emerald-800 bg-emerald-50/70 hover:bg-emerald-100/70 px-2 py-0.5 rounded transition cursor-pointer"
                       >
                         {copiedCode ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                         {copiedCode ? 'Copied Link Code!' : `Code: ${selectedGroup.inviteCode}`}
@@ -690,7 +695,7 @@ export default function App() {
             <div className="flex items-center gap-2 bg-slate-200/60 p-1 rounded-xl w-fit">
               <button
                 onClick={() => setGroupTab('expenses')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   groupTab === 'expenses'
                     ? 'bg-white text-emerald-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -700,7 +705,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setGroupTab('balances')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   groupTab === 'balances'
                     ? 'bg-white text-emerald-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -710,7 +715,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setGroupTab('members')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   groupTab === 'members'
                     ? 'bg-white text-emerald-700 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -727,7 +732,7 @@ export default function App() {
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
                   <button
                     onClick={() => setSelectedCategoryFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-full font-bold transition whitespace-nowrap ${
+                    className={`px-3 py-1.5 rounded-full font-bold transition whitespace-nowrap cursor-pointer ${
                       selectedCategoryFilter === 'ALL'
                         ? 'bg-slate-800 text-white'
                         : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -741,7 +746,7 @@ export default function App() {
                       <button
                         key={cat.id}
                         onClick={() => setSelectedCategoryFilter(cat.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold transition whitespace-nowrap ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold transition whitespace-nowrap cursor-pointer ${
                           selectedCategoryFilter === cat.id
                             ? 'bg-emerald-600 text-white shadow-xs'
                             : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -800,7 +805,7 @@ export default function App() {
                           </div>
                           <button
                             onClick={() => handleDeleteExpense(expense.id)}
-                            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                             title="Delete expense"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -883,7 +888,7 @@ export default function App() {
                               setSettleAmount(transfer.amount.toString());
                               setShowSettleModal(true);
                             }}
-                            className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition"
+                            className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition cursor-pointer"
                           >
                             Settle This
                           </button>
@@ -921,7 +926,7 @@ export default function App() {
                       </span>
                       <button
                         onClick={() => handleCopyInvite(selectedGroup.inviteCode)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
                       >
                         {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         {copiedCode ? 'Copied' : 'Copy Code'}
@@ -945,7 +950,7 @@ export default function App() {
                     />
                     <button
                       type="submit"
-                      className="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-xl text-sm transition"
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-semibold px-4 py-2 rounded-xl text-sm transition cursor-pointer"
                     >
                       Add Member
                     </button>
@@ -1046,65 +1051,76 @@ export default function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD EXPENSE WITH ACCORDING DROPDOWN FOR CATEGORIES                 */}
+      {/* MODAL: ADD EXPENSE WITH ELEGANT VISUAL CATEGORY SELECTOR                   */}
       {/* ========================================================================= */}
       {showAddExpenseModal && selectedGroup && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-black text-slate-900 mb-1">Add Group Bill</h3>
-            <p className="text-xs text-slate-500 mb-4">Bills will be split equally with penny-exact remainder allocation.</p>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xl font-black text-slate-900">Add Group Expense</h3>
+              <span className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                {selectedGroup.name}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mb-5">Select a category and log who paid. The bill will be split equally.</p>
 
             <form onSubmit={handleCreateExpense} className="space-y-4">
-              {/* Dropdown Category Selector matching user's design */}
-              <div className="relative" ref={categoryDropdownRef}>
-                <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Category</label>
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-sm flex items-center justify-between transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-lg">{activeCategoryMeta.emoji}</span>
-                    <span className="font-semibold text-slate-800">{activeCategoryMeta.label}</span>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                </button>
+              {/* Category Visual Grid Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Select Category
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomCategoryMode(!isCustomCategoryMode);
+                      if (!isCustomCategoryMode) {
+                        setNewExpenseCategory('OTHER');
+                      }
+                    }}
+                    className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition cursor-pointer"
+                  >
+                    {isCustomCategoryMode ? '← Pick standard' : '+ Custom tag'}
+                  </button>
+                </div>
 
-                {/* Dark Popover Dropdown matching screenshot */}
-                {isCategoryDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-[#1e2022] text-white rounded-2xl shadow-2xl border border-stone-800 py-2 max-h-64 overflow-y-auto">
-                    {CATEGORIES.map((cat) => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => {
-                          setNewExpenseCategory(cat.id);
-                          setIsCategoryDropdownOpen(false);
-                        }}
-                        className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-3 transition cursor-pointer hover:bg-white/10 ${
-                          newExpenseCategory === cat.id ? 'bg-white/15 font-bold text-white' : 'text-stone-300'
-                        }`}
-                      >
-                        <span className="text-lg">{cat.emoji}</span>
-                        <span>{cat.label}</span>
-                        {newExpenseCategory === cat.id && (
-                          <Check className="w-4 h-4 text-emerald-400 ml-auto" />
-                        )}
-                      </button>
-                    ))}
-                    <div className="border-t border-stone-800 mt-1 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNewExpenseCategory('OTHER');
-                          setIsCategoryDropdownOpen(false);
-                        }}
-                        className="w-full px-4 py-2.5 text-left text-xs font-semibold text-emerald-400 hover:bg-white/10 transition cursor-pointer flex items-center gap-2"
-                      >
-                        <PlusCircle className="w-3.5 h-3.5" />
-                        <span>Add custom category</span>
-                      </button>
-                    </div>
+                {isCustomCategoryMode ? (
+                  <div className="flex items-center gap-2 p-1 bg-slate-50 border border-emerald-300 rounded-xl focus-within:ring-2 focus-within:ring-emerald-500 transition">
+                    <span className="pl-3 text-lg">🏷️</span>
+                    <input
+                      type="text"
+                      autoFocus
+                      required
+                      placeholder="e.g. WiFi Bill, Electricity, Gifts"
+                      value={customCategoryInput}
+                      onChange={(e) => setCustomCategoryInput(e.target.value)}
+                      className="flex-1 py-2 px-2 text-sm bg-transparent focus:outline-none font-medium"
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {CATEGORIES.map(cat => {
+                      const isSelected = newExpenseCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setNewExpenseCategory(cat.id)}
+                          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer text-left ${
+                            isSelected 
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20 shadow-xs' 
+                              : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="text-xl shrink-0">{cat.emoji}</span>
+                          <span className="truncate flex-1">{cat.label}</span>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
