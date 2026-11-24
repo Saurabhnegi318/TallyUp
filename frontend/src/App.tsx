@@ -229,7 +229,7 @@ export default function App() {
     try {
       setJoinGroupError(null);
       const res = await apiClient.post('/api/groups/join', {
-        inviteCode: joinInviteCode.trim().toUpperCase()
+        inviteCode: joinInviteCode.trim()
       });
       // Refresh user's groups
       await loadUserGroups();
@@ -1101,7 +1101,7 @@ export default function App() {
                   autoFocus
                   placeholder="e.g. 7K9X2M"
                   value={joinInviteCode}
-                  onChange={(e) => setJoinInviteCode(e.target.value.toUpperCase())}
+                  onChange={(e) => setJoinInviteCode(e.target.value.trim())}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-center text-lg tracking-widest font-black uppercase text-emerald-900 focus:bg-white focus:outline-emerald-500"
                 />
               </div>

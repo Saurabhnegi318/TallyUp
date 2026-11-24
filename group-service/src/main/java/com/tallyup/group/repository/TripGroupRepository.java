@@ -12,7 +12,13 @@ import java.util.UUID;
 
 @Repository
 public interface TripGroupRepository extends JpaRepository<TripGroup, UUID> {
-    Optional<TripGroup> findByInviteCode(String inviteCode);
+    
+    @Query("SELECT g FROM TripGroup g WHERE UPPER(g.inviteCode) = UPPER(:inviteCode)")
+    Optional<TripGroup> findByInviteCodeIgnoreCase(@Param("inviteCode") String inviteCode);
+
+    default Optional<TripGroup> findByInviteCode(String inviteCode) {
+        return findByInviteCodeIgnoreCase(inviteCode != null ? inviteCode.trim() : "");
+    }
 
     @Query("SELECT g FROM TripGroup g JOIN g.members m WHERE m.userId = :userId AND g.isArchived = false")
     List<TripGroup> findAllByUserId(@Param("userId") UUID userId);
