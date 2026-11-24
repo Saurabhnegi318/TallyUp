@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
@@ -230,20 +231,22 @@ public class ExpenseService {
     }
 
     private void publishExpenseEvent(String eventType, UUID groupId, UUID expenseId) {
-        try {
-            ExpenseChangedEvent event = ExpenseChangedEvent.builder()
-                    .eventId(UUID.randomUUID())
-                    .eventType(eventType)
-                    .groupId(groupId)
-                    .expenseId(expenseId)
-                    .occurredAt(Instant.now())
-                    .build();
+        CompletableFuture.runAsync(() -> {
+            try {
+                ExpenseChangedEvent event = ExpenseChangedEvent.builder()
+                        .eventId(UUID.randomUUID())
+                        .eventType(eventType)
+                        .groupId(groupId)
+                        .expenseId(expenseId)
+                        .occurredAt(Instant.now())
+                        .build();
 
-            kafkaTemplate.send(TOPIC_EXPENSE_EVENTS, groupId.toString(), event);
-            log.info("Published {} event for group: {}", eventType, groupId);
-        } catch (Exception e) {
-            log.error("Failed to publish Kafka event for group {}", groupId, e);
-        }
+                kafkaTemplate.send(TOPIC_EXPENSE_EVENTS, groupId.toString(), event);
+                log.info("Published {} event for group: {}", eventType, groupId);
+            } catch (Exception e) {
+                log.warn("Kafka event publishing skipped for group {}: {}", groupId, e.getMessage());
+            }
+        });
     }
 
     private ExpenseResponse mapToResponse(Expense expense) {

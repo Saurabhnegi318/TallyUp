@@ -25,6 +25,9 @@ public class KafkaProducerConfig {
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
+        // Fast fail: never block HTTP requests for more than 1 second if Kafka is offline
+        configProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 1000);
+        configProps.put(ProducerConfig.RETRIES_CONFIG, 0);
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
