@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -89,6 +88,33 @@ class ExpenseServiceTest {
     }
 
     @Test
+    @DisplayName("Exact split with valid custom amounts (50.00, 30.00, 20.00 = 100.00)")
+    void testExactSplitValid() {
+        CreateExpenseRequest request = CreateExpenseRequest.builder()
+                .groupId(groupId)
+                .paidByMemberId(payerId)
+                .title("Groceries")
+                .totalAmount(new BigDecimal("100.00"))
+                .splitType(SplitType.EXACT)
+                .splits(List.of(
+                        SplitDetail.builder().memberId(member1).owedAmount(new BigDecimal("50.00")).build(),
+                        SplitDetail.builder().memberId(member2).owedAmount(new BigDecimal("30.00")).build(),
+                        SplitDetail.builder().memberId(member3).owedAmount(new BigDecimal("20.00")).build()
+                ))
+                .build();
+
+        when(expenseRepository.save(any(Expense.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ExpenseResponse response = expenseService.createExpense(request);
+
+        assertNotNull(response);
+        assertEquals(3, response.getSplits().size());
+        assertEquals(new BigDecimal("50.00"), response.getSplits().get(0).getOwedAmount());
+        assertEquals(new BigDecimal("30.00"), response.getSplits().get(1).getOwedAmount());
+        assertEquals(new BigDecimal("20.00"), response.getSplits().get(2).getOwedAmount());
+    }
+
+    @Test
     @DisplayName("Exact split with invalid sum must throw IllegalArgumentException")
     void testExactSplitInvalidSum() {
         CreateExpenseRequest request = CreateExpenseRequest.builder()
@@ -100,6 +126,55 @@ class ExpenseServiceTest {
                 .splits(List.of(
                         SplitDetail.builder().memberId(member1).owedAmount(new BigDecimal("50.00")).build(),
                         SplitDetail.builder().memberId(member2).owedAmount(new BigDecimal("40.00")).build()
+                ))
+                .build();
+
+        assertThrows(IllegalArgumentException.class, () -> expenseService.createExpense(request));
+    }
+
+    @Test
+    @DisplayName("Percentage split with penny-exact correction (33.33%, 33.33%, 33.34% of 100.00)")
+    void testPercentageSplitPennyExact() {
+        CreateExpenseRequest request = CreateExpenseRequest.builder()
+                .groupId(groupId)
+                .paidByMemberId(payerId)
+                .title("Flight Tickets")
+                .totalAmount(new BigDecimal("100.00"))
+                .splitType(SplitType.PERCENTAGE)
+                .splits(List.of(
+                        SplitDetail.builder().memberId(member1).shareValue(new BigDecimal("33.33")).build(),
+                        SplitDetail.builder().memberId(member2).shareValue(new BigDecimal("33.33")).build(),
+                        SplitDetail.builder().memberId(member3).shareValue(new BigDecimal("33.34")).build()
+                ))
+                .build();
+
+        when(expenseRepository.save(any(Expense.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ExpenseResponse response = expenseService.createExpense(request);
+
+        assertNotNull(response);
+        assertEquals(3, response.getSplits().size());
+
+        BigDecimal s1 = response.getSplits().get(0).getOwedAmount();
+        BigDecimal s2 = response.getSplits().get(1).getOwedAmount();
+        BigDecimal s3 = response.getSplits().get(2).getOwedAmount();
+
+        BigDecimal sum = s1.add(s2).add(s3);
+        assertEquals(new BigDecimal("100.00"), sum);
+    }
+
+    @Test
+    @DisplayName("Percentage split whose sum is not 100% must throw IllegalArgumentException")
+    void testPercentageSplitInvalidTotal() {
+        CreateExpenseRequest request = CreateExpenseRequest.builder()
+                .groupId(groupId)
+                .paidByMemberId(payerId)
+                .title("Invalid Split")
+                .totalAmount(new BigDecimal("100.00"))
+                .splitType(SplitType.PERCENTAGE)
+                .splits(List.of(
+                        SplitDetail.builder().memberId(member1).shareValue(new BigDecimal("60.00")).build(),
+                        SplitDetail.builder().memberId(member2).shareValue(new BigDecimal("30.00")).build()
                 ))
                 .build();
 

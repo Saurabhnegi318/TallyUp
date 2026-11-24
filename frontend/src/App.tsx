@@ -149,6 +149,9 @@ export default function App() {
   const [isCustomCategoryMode, setIsCustomCategoryMode] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [newExpenseDate, setNewExpenseDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [splitType, setSplitType] = useState<'EQUAL' | 'EXACT' | 'PERCENTAGE'>('EQUAL');
+  const [memberSplitValues, setMemberSplitValues] = useState<Record<string, string>>({});
+  const [splitError, setSplitError] = useState<string | null>(null);
 
   // Settle up modal
   const [showSettleModal, setShowSettleModal] = useState(false);
@@ -275,8 +278,44 @@ export default function App() {
     if (!selectedGroup || !newExpensePayer || !newExpenseAmount || !newExpenseTitle) return;
 
     try {
+      setSplitError(null);
       const total = parseFloat(newExpenseAmount);
-      const splitPayload = selectedGroup.members.map(m => ({ memberId: m.id }));
+      if (isNaN(total) || total <= 0) {
+        setSplitError('Please enter a valid expense amount');
+        return;
+      }
+
+      let splitPayload: any[] = [];
+      if (splitType === 'EQUAL') {
+        splitPayload = selectedGroup.members.map(m => ({ memberId: m.id }));
+      } else if (splitType === 'EXACT') {
+        const sum = selectedGroup.members.reduce(
+          (acc, m) => acc + (parseFloat(memberSplitValues[m.id] || '0') || 0),
+          0
+        );
+        if (Math.abs(sum - total) > 0.01) {
+          setSplitError('Sum of member amounts (₹' + sum.toFixed(2) + ') must equal total bill (₹' + total.toFixed(2) + ')');
+          return;
+        }
+        splitPayload = selectedGroup.members.map(m => ({
+          memberId: m.id,
+          owedAmount: parseFloat(memberSplitValues[m.id] || '0') || 0
+        }));
+      } else if (splitType === 'PERCENTAGE') {
+        const sumPct = selectedGroup.members.reduce(
+          (acc, m) => acc + (parseFloat(memberSplitValues[m.id] || '0') || 0),
+          0
+        );
+        if (Math.abs(sumPct - 100) > 0.01) {
+          setSplitError('Sum of percentages (' + sumPct.toFixed(1) + '%) must equal 100%');
+          return;
+        }
+        splitPayload = selectedGroup.members.map(m => ({
+          memberId: m.id,
+          shareValue: parseFloat(memberSplitValues[m.id] || '0') || 0
+        }));
+      }
+
       const finalCategory = isCustomCategoryMode && customCategoryInput.trim() 
         ? customCategoryInput.trim().toUpperCase().replace(/\s+/g, '_')
         : newExpenseCategory;
@@ -286,7 +325,7 @@ export default function App() {
         paidByMemberId: newExpensePayer,
         title: newExpenseTitle.trim(),
         totalAmount: total,
-        splitType: 'EQUAL',
+        splitType: splitType,
         category: finalCategory,
         expenseDate: newExpenseDate,
         splits: splitPayload,
@@ -298,10 +337,15 @@ export default function App() {
       setCustomCategoryInput('');
       setIsCustomCategoryMode(false);
       setNewExpenseCategory('RESTAURANTS_BARS');
+      setSplitType('EQUAL');
+      setMemberSplitValues({});
+      setSplitError(null);
       loadGroupExpenses(selectedGroup.id);
       loadGroupBalances(selectedGroup.id);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to add expense', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to add expense';
+      setSplitError(msg);
     }
   };
 
@@ -800,7 +844,7 @@ export default function App() {
                               ₹{expense.totalAmount.toFixed(2)}
                             </p>
                             <p className="text-[10px] text-slate-400 font-semibold uppercase">
-                              {expense.splits.length} split equal
+                              {expense.splits.length} split • {expense.splitType ? expense.splitType.toLowerCase() : 'equal'}
                             </p>
                           </div>
                           <button
@@ -1176,9 +1220,185 @@ export default function App() {
                 </select>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600">
-                <span className="font-bold text-slate-800">Equal Split:</span> This bill is split equally across all {selectedGroup.members.length} members ({selectedGroup.members.map(m => m.displayName).join(', ')}).
+              {/* Split Mode Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Split Method
+                </label>
+                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitType('EQUAL');
+                      setSplitError(null);
+                    }}
+                    className={`py-2 text-xs font-bold rounded-lg transition cursor-pointer text-center ${
+                      splitType === 'EQUAL'
+                        ? 'bg-white text-emerald-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    = Equal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitType('EXACT');
+                      setSplitError(null);
+                      const totalNum = parseFloat(newExpenseAmount) || 0;
+                      if (totalNum > 0 && Object.keys(memberSplitValues).length === 0) {
+                        const even = (totalNum / selectedGroup.members.length).toFixed(2);
+                        const initial: Record<string, string> = {};
+                        selectedGroup.members.forEach(m => initial[m.id] = even);
+                        setMemberSplitValues(initial);
+                      }
+                    }}
+                    className={`py-2 text-xs font-bold rounded-lg transition cursor-pointer text-center ${
+                      splitType === 'EXACT'
+                        ? 'bg-white text-emerald-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    ₹ Exact Amounts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitType('PERCENTAGE');
+                      setSplitError(null);
+                      if (Object.keys(memberSplitValues).length === 0) {
+                        const evenPct = (100 / selectedGroup.members.length).toFixed(1);
+                        const initial: Record<string, string> = {};
+                        selectedGroup.members.forEach(m => initial[m.id] = evenPct);
+                        setMemberSplitValues(initial);
+                      }
+                    }}
+                    className={`py-2 text-xs font-bold rounded-lg transition cursor-pointer text-center ${
+                      splitType === 'PERCENTAGE'
+                        ? 'bg-white text-emerald-800 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    % Percentage
+                  </button>
+                </div>
               </div>
+
+              {/* Split Breakdown */}
+              {splitType === 'EQUAL' && (
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600">
+                  <span className="font-bold text-slate-800">Equal Split:</span> This bill is split equally across all {selectedGroup.members.length} members ({selectedGroup.members.map(m => m.displayName).join(', ')}).
+                  {newExpenseAmount && !isNaN(parseFloat(newExpenseAmount)) && (
+                    <span className="block mt-1 font-semibold text-emerald-700">
+                      ₹{(parseFloat(newExpenseAmount) / selectedGroup.members.length).toFixed(2)} per person
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {splitType === 'EXACT' && (
+                <div className="space-y-2 bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-slate-700">Custom Member Amounts (₹)</span>
+                    {(() => {
+                      const totalNum = parseFloat(newExpenseAmount) || 0;
+                      const sum = selectedGroup.members.reduce((acc, m) => acc + (parseFloat(memberSplitValues[m.id] || '0') || 0), 0);
+                      const diff = totalNum - sum;
+                      return (
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                          Math.abs(diff) < 0.01 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {Math.abs(diff) < 0.01 ? ('✓ Balanced (₹' + sum.toFixed(2) + ')') : ('Left: ₹' + diff.toFixed(2))}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                    {selectedGroup.members.map(m => (
+                      <div key={m.id} className="flex items-center justify-between gap-3 bg-white px-3 py-2 rounded-lg border border-slate-200">
+                        <span className="text-xs font-semibold text-slate-800 truncate">{m.displayName}</span>
+                        <div className="flex items-center gap-1.5 w-28 shrink-0">
+                          <span className="text-xs text-slate-400 font-bold">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={memberSplitValues[m.id] || ''}
+                            onChange={(e) => {
+                              setMemberSplitValues({
+                                ...memberSplitValues,
+                                [m.id]: e.target.value
+                              });
+                            }}
+                            className="w-full text-right text-xs font-semibold px-2 py-1 bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {splitType === 'PERCENTAGE' && (
+                <div className="space-y-2 bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-slate-700">Member Percentages (%)</span>
+                    {(() => {
+                      const sumPct = selectedGroup.members.reduce((acc, m) => acc + (parseFloat(memberSplitValues[m.id] || '0') || 0), 0);
+                      const diffPct = 100 - sumPct;
+                      return (
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${
+                          Math.abs(diffPct) < 0.01 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {Math.abs(diffPct) < 0.01 ? '✓ Balanced (100%)' : ('Remaining: ' + diffPct.toFixed(1) + '%')}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                    {selectedGroup.members.map(m => {
+                      const totalNum = parseFloat(newExpenseAmount) || 0;
+                      const pct = parseFloat(memberSplitValues[m.id] || '0') || 0;
+                      const calculatedOwed = (totalNum * pct) / 100;
+                      return (
+                        <div key={m.id} className="flex items-center justify-between gap-3 bg-white px-3 py-2 rounded-lg border border-slate-200">
+                          <div className="min-w-0">
+                            <span className="text-xs font-semibold text-slate-800 block truncate">{m.displayName}</span>
+                            {totalNum > 0 && (
+                              <span className="text-[10px] text-slate-400">≈ ₹{calculatedOwed.toFixed(2)}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 w-24 shrink-0">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="100"
+                              placeholder="0"
+                              value={memberSplitValues[m.id] || ''}
+                              onChange={(e) => {
+                                setMemberSplitValues({
+                                  ...memberSplitValues,
+                                  [m.id]: e.target.value
+                                });
+                              }}
+                              className="w-full text-right text-xs font-semibold px-2 py-1 bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-emerald-500"
+                            />
+                            <span className="text-xs text-slate-400 font-bold">%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {splitError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
+                  {splitError}
+                </div>
+              )}
 
               <div className="flex justify-end gap-2.5 pt-2">
                 <button

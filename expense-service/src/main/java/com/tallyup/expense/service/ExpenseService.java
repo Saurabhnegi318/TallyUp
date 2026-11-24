@@ -100,18 +100,82 @@ public class ExpenseService {
             if (sum.compareTo(total) != 0) {
                 throw new IllegalArgumentException("Sum of exact splits (" + sum + ") must equal total bill amount (" + total + ")");
             }
-        } else {
-            // Default fallback
-            BigDecimal countBd = BigDecimal.valueOf(count);
-            BigDecimal baseShare = total.divide(countBd, 2, RoundingMode.HALF_UP);
+        } else if (splitType == SplitType.PERCENTAGE) {
+            BigDecimal sumPercentage = BigDecimal.ZERO;
             for (SplitDetail detail : inputSplits) {
+                if (detail.getShareValue() == null || detail.getShareValue().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new IllegalArgumentException("Percentage share cannot be negative or null");
+                }
+                sumPercentage = sumPercentage.add(detail.getShareValue());
+            }
+
+            // Sum of percentages must equal 100.00%
+            if (sumPercentage.setScale(2, RoundingMode.HALF_UP).compareTo(new BigDecimal("100.00")) != 0) {
+                throw new IllegalArgumentException("Sum of percentage splits (" + sumPercentage + "%) must equal 100%");
+            }
+
+            BigDecimal sumCalculatedOwed = BigDecimal.ZERO;
+            int firstNonZeroIndex = -1;
+
+            for (int i = 0; i < count; i++) {
+                SplitDetail detail = inputSplits.get(i);
+                BigDecimal pct = detail.getShareValue();
+                BigDecimal owed = total.multiply(pct).divide(BigDecimal.valueOf(100), 2, RoundingMode.DOWN);
+                sumCalculatedOwed = sumCalculatedOwed.add(owed);
+                if (firstNonZeroIndex == -1 && pct.compareTo(BigDecimal.ZERO) > 0) {
+                    firstNonZeroIndex = i;
+                }
                 result.add(ExpenseSplit.builder()
                         .expense(expense)
                         .memberId(detail.getMemberId())
-                        .owedAmount(baseShare)
-                        .shareValue(detail.getShareValue())
+                        .owedAmount(owed)
+                        .shareValue(pct)
                         .build());
             }
+
+            // Penny-exact correction for rounding discrepancies
+            BigDecimal remainder = total.subtract(sumCalculatedOwed);
+            if (remainder.compareTo(BigDecimal.ZERO) != 0 && firstNonZeroIndex >= 0) {
+                ExpenseSplit target = result.get(firstNonZeroIndex);
+                target.setOwedAmount(target.getOwedAmount().add(remainder));
+            }
+        } else if (splitType == SplitType.SHARES) {
+            BigDecimal totalShares = BigDecimal.ZERO;
+            for (SplitDetail detail : inputSplits) {
+                if (detail.getShareValue() == null || detail.getShareValue().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new IllegalArgumentException("Share value cannot be negative or null");
+                }
+                totalShares = totalShares.add(detail.getShareValue());
+            }
+            if (totalShares.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Total shares must be strictly positive");
+            }
+
+            BigDecimal sumCalculatedOwed = BigDecimal.ZERO;
+            int firstNonZeroIndex = -1;
+            for (int i = 0; i < count; i++) {
+                SplitDetail detail = inputSplits.get(i);
+                BigDecimal shares = detail.getShareValue();
+                BigDecimal owed = total.multiply(shares).divide(totalShares, 2, RoundingMode.DOWN);
+                sumCalculatedOwed = sumCalculatedOwed.add(owed);
+                if (firstNonZeroIndex == -1 && shares.compareTo(BigDecimal.ZERO) > 0) {
+                    firstNonZeroIndex = i;
+                }
+                result.add(ExpenseSplit.builder()
+                        .expense(expense)
+                        .memberId(detail.getMemberId())
+                        .owedAmount(owed)
+                        .shareValue(shares)
+                        .build());
+            }
+
+            BigDecimal remainder = total.subtract(sumCalculatedOwed);
+            if (remainder.compareTo(BigDecimal.ZERO) != 0 && firstNonZeroIndex >= 0) {
+                ExpenseSplit target = result.get(firstNonZeroIndex);
+                target.setOwedAmount(target.getOwedAmount().add(remainder));
+            }
+        } else {
+            throw new UnsupportedOperationException("Unsupported split type: " + splitType);
         }
 
         return result;
