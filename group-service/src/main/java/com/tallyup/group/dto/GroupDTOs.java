@@ -19,9 +19,11 @@ public class GroupDTOs {
     @AllArgsConstructor
     public static class CreateGroupRequest {
         @NotBlank(message = "Group name is required")
-        @Size(max = 120)
+        @Size(max = 100)
         private String name;
 
+        @NotBlank(message = "Currency code is required")
+        @Size(min = 3, max = 3)
         private String currencyCode = "INR";
     }
 
@@ -66,6 +68,14 @@ public class GroupDTOs {
     @AllArgsConstructor
     public static class ClaimMemberRequest {
         private UUID memberId;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class JoinGroupRequest {
+        @NotBlank(message = "Invite code is required")
+        private String inviteCode;
     }
 
     @Data

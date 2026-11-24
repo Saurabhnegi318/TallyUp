@@ -9,6 +9,7 @@ import com.tallyup.group.repository.GroupMemberRepository;
 import com.tallyup.group.repository.TripGroupRepository;
 import com.tallyup.group.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,19 +20,21 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class GroupService {
 
     private final TripGroupRepository tripGroupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final UserRepository userRepository;
 
-    private static final String ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final String INVITE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private static final int INVITE_LENGTH = 6;
+    private final SecureRandom random = new SecureRandom();
 
     private String generateInviteCode() {
-        StringBuilder sb = new StringBuilder(10);
-        for (int i = 0; i < 10; i++) {
-            sb.append(ALPHANUMERIC.charAt(RANDOM.nextInt(ALPHANUMERIC.length())));
+        StringBuilder sb = new StringBuilder(INVITE_LENGTH);
+        for (int i = 0; i < INVITE_LENGTH; i++) {
+            sb.append(INVITE_CHARS.charAt(random.nextInt(INVITE_CHARS.length())));
         }
         return sb.toString();
     }
@@ -43,7 +46,7 @@ public class GroupService {
 
         TripGroup group = TripGroup.builder()
                 .name(request.getName().trim())
-                .currencyCode(request.getCurrencyCode() != null ? request.getCurrencyCode().toUpperCase() : "INR")
+                .currencyCode(request.getCurrencyCode().toUpperCase())
                 .inviteCode(generateInviteCode())
                 .createdBy(userId)
                 .build();
@@ -79,7 +82,7 @@ public class GroupService {
 
     @Transactional(readOnly = true)
     public InviteDetailsResponse getInviteDetails(String inviteCode) {
-        TripGroup group = tripGroupRepository.findByInviteCode(inviteCode)
+        TripGroup group = tripGroupRepository.findByInviteCode(inviteCode.trim().toUpperCase())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid invite code"));
 
         List<MemberResponse> unclaimed = groupMemberRepository.findByGroupIdAndUserIdIsNull(group.getId()).stream()
@@ -92,6 +95,33 @@ public class GroupService {
                 .currencyCode(group.getCurrencyCode())
                 .unclaimedMembers(unclaimed)
                 .build();
+    }
+
+    @Transactional
+    public GroupResponse joinGroup(String inviteCode, UUID userId) {
+        TripGroup group = tripGroupRepository.findByInviteCode(inviteCode.trim().toUpperCase())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid invite code: " + inviteCode));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        // Check if user is already a member
+        boolean alreadyMember = group.getMembers().stream()
+                .anyMatch(m -> userId.equals(m.getUserId()));
+
+        if (!alreadyMember) {
+            // Check if there's an unclaimed member with the same name, or create new member
+            GroupMember newMember = GroupMember.builder()
+                    .group(group)
+                    .userId(userId)
+                    .displayName(user.getFullName())
+                    .role(MemberRole.MEMBER)
+                    .build();
+            groupMemberRepository.save(newMember);
+            group.getMembers().add(newMember);
+        }
+
+        return mapToGroupResponse(group);
     }
 
     @Transactional

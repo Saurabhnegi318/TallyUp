@@ -39,6 +39,17 @@ public class GroupController {
         return ResponseEntity.ok(groupService.getUserGroups(userId));
     }
 
+    @PostMapping("/join")
+    public ResponseEntity<GroupResponse> joinGroupByCode(
+            @RequestHeader(value = "X-User-Id", required = false) String userIdHeader,
+            @Valid @RequestBody JoinGroupRequest request) {
+        UUID userId = userIdHeader != null ? UUID.fromString(userIdHeader) : null;
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(groupService.joinGroup(request.getInviteCode(), userId));
+    }
+
     @GetMapping("/{groupId}")
     public ResponseEntity<GroupResponse> getGroup(@PathVariable UUID groupId) {
         return ResponseEntity.ok(groupService.getGroup(groupId));

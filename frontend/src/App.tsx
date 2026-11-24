@@ -136,6 +136,9 @@ export default function App() {
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupCurrency, setNewGroupCurrency] = useState('INR');
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
+  const [joinInviteCode, setJoinInviteCode] = useState('');
+  const [joinGroupError, setJoinGroupError] = useState<string | null>(null);
 
   // New Virtual Member state
   const [newMemberName, setNewMemberName] = useState('');
@@ -217,6 +220,27 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to load groups', err);
+    }
+  };
+
+  const handleJoinGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinInviteCode.trim()) return;
+    try {
+      setJoinGroupError(null);
+      const res = await apiClient.post('/api/groups/join', {
+        inviteCode: joinInviteCode.trim().toUpperCase()
+      });
+      // Refresh user's groups
+      await loadUserGroups();
+      setSelectedGroup(res.data);
+      setGroupTab('expenses');
+      setJoinInviteCode('');
+      setShowJoinGroupModal(false);
+    } catch (err: any) {
+      console.error('Failed to join group', err);
+      const msg = err?.response?.data?.message || 'Invalid invite code or group not found';
+      setJoinGroupError(msg);
     }
   };
 
@@ -575,12 +599,23 @@ export default function App() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Your Expense Groups</h1>
                 <p className="text-emerald-100 text-sm mt-1">Select a group to log bills, view net balances, and settle debts.</p>
               </div>
-              <button
-                onClick={() => setShowCreateGroupModal(true)}
-                className="bg-white hover:bg-emerald-50 text-emerald-800 font-bold px-4 py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-2 self-start sm:self-auto cursor-pointer"
-              >
-                <PlusCircle className="w-4 h-4 text-emerald-600" /> Create Group
-              </button>
+              <div className="flex items-center gap-2.5 self-start sm:self-auto">
+                <button
+                  onClick={() => {
+                    setShowJoinGroupModal(true);
+                    setJoinGroupError(null);
+                  }}
+                  className="bg-emerald-700/80 hover:bg-emerald-700 border border-emerald-400/40 text-white font-bold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer text-sm"
+                >
+                  <Users className="w-4 h-4 text-emerald-200" /> Join Group
+                </button>
+                <button
+                  onClick={() => setShowCreateGroupModal(true)}
+                  className="bg-white hover:bg-emerald-50 text-emerald-800 font-bold px-4 py-2.5 rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer text-sm"
+                >
+                  <PlusCircle className="w-4 h-4 text-emerald-600" /> Create Group
+                </button>
+              </div>
             </div>
 
             {/* Groups Grid */}
@@ -1037,6 +1072,65 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* ========================================================================= */}
+      {/* MODAL: JOIN GROUP VIA INVITE CODE                                        */}
+      {/* ========================================================================= */}
+      {showJoinGroupModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Join an Existing Group</h3>
+                <p className="text-xs text-slate-500">Enter the 6-letter invite code shared by your friend.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleJoinGroup} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Invite Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={10}
+                  autoFocus
+                  placeholder="e.g. 7K9X2M"
+                  value={joinInviteCode}
+                  onChange={(e) => setJoinInviteCode(e.target.value.toUpperCase())}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-center text-lg tracking-widest font-black uppercase text-emerald-900 focus:bg-white focus:outline-emerald-500"
+                />
+              </div>
+
+              {joinGroupError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
+                  {joinGroupError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowJoinGroupModal(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-md shadow-emerald-200 cursor-pointer"
+                >
+                  Join Group
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL: CREATE GROUP                                                      */}
