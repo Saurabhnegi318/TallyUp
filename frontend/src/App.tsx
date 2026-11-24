@@ -169,6 +169,40 @@ export default function App() {
   const [settleReceiver, setSettleReceiver] = useState('');
   const [settleAmount, setSettleAmount] = useState('');
 
+  // Cloud Server Pre-Warm & Health Monitoring
+  const [serverWarmupState, setServerWarmupState] = useState<'checking' | 'waking' | 'ready'>('checking');
+
+  useEffect(() => {
+    // 1. Fire silent background requests to all 4 microservices on initial load
+    const RENDER_SERVICES = [
+      'https://tallyup-api-gateway.onrender.com/actuator/health',
+      'https://tallyup-group-service.onrender.com/actuator/health',
+      'https://tallyup-expense-service.onrender.com/actuator/health',
+      'https://tallyup-settlement-service.onrender.com/actuator/health',
+    ];
+
+    RENDER_SERVICES.forEach((url) => {
+      fetch(url, { mode: 'no-cors' }).catch(() => {});
+    });
+
+    // 2. Poll API Gateway health to detect when services are awake
+    let isMounted = true;
+    const checkServerHealth = async () => {
+      try {
+        await apiClient.get('/actuator/health');
+        if (isMounted) setServerWarmupState('ready');
+      } catch {
+        if (isMounted) {
+          setServerWarmupState('waking');
+          setTimeout(checkServerHealth, 3000);
+        }
+      }
+    };
+
+    checkServerHealth();
+    return () => { isMounted = false; };
+  }, []);
+
   useEffect(() => {
     if (currentUser) {
       loadUserGroups();
@@ -487,6 +521,26 @@ export default function App() {
             </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">TallyUp</h1>
             <p className="text-gray-500 mt-1.5 text-sm">Lightweight, zero-paywall group expense splitting</p>
+
+            {/* Cloud Server Warm-up Status Badge */}
+            <div className="mt-3 flex justify-center">
+              {serverWarmupState === 'waking' ? (
+                <div className="inline-flex items-center gap-2 py-1 px-3 bg-amber-50 text-amber-800 text-xs font-semibold rounded-full border border-amber-200 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span>Waking up cloud servers (takes ~20s)...</span>
+                </div>
+              ) : serverWarmupState === 'ready' ? (
+                <div className="inline-flex items-center gap-1.5 py-1 px-3 bg-emerald-50 text-emerald-800 text-xs font-semibold rounded-full border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>Servers Ready</span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 py-1 px-3 bg-slate-50 text-slate-600 text-xs font-medium rounded-full border border-slate-200">
+                  <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                  <span>Connecting to servers...</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
@@ -595,6 +649,20 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Cloud Server Status Badge in Navbar */}
+            {serverWarmupState === 'waking' ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border bg-amber-50 text-amber-800 border-amber-200 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span className="hidden sm:inline">Waking servers (~20s)...</span>
+                <span className="sm:hidden">Waking...</span>
+              </div>
+            ) : serverWarmupState === 'ready' ? (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span className="hidden md:inline">Servers Ready</span>
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold border border-emerald-300">
                 {currentUser.fullName.charAt(0).toUpperCase()}
