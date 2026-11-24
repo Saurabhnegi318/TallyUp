@@ -250,6 +250,39 @@ export default function App() {
     }
   };
 
+  const handleRemoveMember = async (member: Member) => {
+    if (!selectedGroup) return;
+    if (selectedGroup.createdBy === member.userId) {
+      alert("The group creator cannot be removed from the group.");
+      return;
+    }
+    const isSelf = member.userId === currentUser?.userId;
+    const confirmMessage = isSelf
+      ? `Are you sure you want to leave "${selectedGroup.name}"?`
+      : `Are you sure you want to remove "${member.displayName}" from this group?`;
+
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      await apiClient.delete(`/api/groups/${selectedGroup.id}/members/${member.id}`);
+      if (isSelf) {
+        setSelectedGroup(null);
+        loadUserGroups();
+        return;
+      }
+      const updatedMembers = selectedGroup.members.filter(m => m.id !== member.id);
+      const updatedGroup = { ...selectedGroup, members: updatedMembers };
+      setSelectedGroup(updatedGroup);
+      setGroups(groups.map(g => g.id === updatedGroup.id ? updatedGroup : g));
+      loadGroupBalances(selectedGroup.id);
+      loadGroupExpenses(selectedGroup.id);
+    } catch (err: any) {
+      console.error("Failed to remove member", err);
+      const msg = err?.response?.data?.message || err?.message || "Failed to remove member";
+      alert(msg);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -1214,6 +1247,17 @@ export default function App() {
                           }`}>
                             {member.role}
                           </span>
+
+                          {/* Delete Member action */}
+                          {selectedGroup.createdBy !== member.userId && (
+                            <button
+                              onClick={() => handleRemoveMember(member)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              title={member.userId === currentUser?.userId ? "Leave group" : "Remove member"}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1222,6 +1266,16 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+        {/* Floating Action Button for Mobile */}
+        {selectedGroup && (
+          <button
+            onClick={() => setShowAddExpenseModal(true)}
+            className="sm:hidden fixed bottom-6 right-6 z-40 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold px-4 py-3.5 rounded-full shadow-xl shadow-emerald-700/30 flex items-center gap-2 transition cursor-pointer"
+          >
+            <PlusCircle className="w-5 h-5" />
+            <span className="text-sm">Add Bill</span>
+          </button>
         )}
       </main>
 
