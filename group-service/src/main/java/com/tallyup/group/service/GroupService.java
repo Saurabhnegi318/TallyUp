@@ -99,18 +99,18 @@ public class GroupService {
 
     @Transactional
     public GroupResponse joinGroup(String inviteCode, UUID userId) {
-        TripGroup group = tripGroupRepository.findByInviteCode(inviteCode.trim().toUpperCase())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid invite code: " + inviteCode));
+        String cleanCode = inviteCode != null ? inviteCode.trim().toUpperCase() : "";
+        TripGroup group = tripGroupRepository.findByInviteCode(cleanCode)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid invite code: " + cleanCode));
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        // Check if user is already a member
-        boolean alreadyMember = group.getMembers().stream()
+        List<GroupMember> existingMembers = groupMemberRepository.findByGroupId(group.getId());
+        boolean alreadyMember = existingMembers.stream()
                 .anyMatch(m -> userId.equals(m.getUserId()));
 
         if (!alreadyMember) {
-            // Check if there's an unclaimed member with the same name, or create new member
             GroupMember newMember = GroupMember.builder()
                     .group(group)
                     .userId(userId)
@@ -118,10 +118,9 @@ public class GroupService {
                     .role(MemberRole.MEMBER)
                     .build();
             groupMemberRepository.save(newMember);
-            group.getMembers().add(newMember);
         }
 
-        return mapToGroupResponse(group);
+        return getGroup(group.getId());
     }
 
     @Transactional
