@@ -47,7 +47,7 @@ public class GroupController {
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.ok(groupService.joinGroup(request.getInviteCode(), userId));
+        return ResponseEntity.ok(groupService.joinGroup(request.getInviteCode(), userId, request.getClaimMemberId()));
     }
 
     @GetMapping("/{groupId}")

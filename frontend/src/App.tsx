@@ -139,6 +139,13 @@ export default function App() {
   const [showJoinGroupModal, setShowJoinGroupModal] = useState(false);
   const [joinInviteCode, setJoinInviteCode] = useState('');
   const [joinGroupError, setJoinGroupError] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<{
+    groupId: string;
+    groupName: string;
+    currencyCode: string;
+    unclaimedMembers: { id: string; displayName: string }[];
+  } | null>(null);
+  const [selectedClaimMemberId, setSelectedClaimMemberId] = useState<string>('NEW');
 
   // New Virtual Member state
   const [newMemberName, setNewMemberName] = useState('');
@@ -223,19 +230,42 @@ export default function App() {
     }
   };
 
+  const fetchInvitePreview = async (code: string) => {
+    const clean = code.trim();
+    if (clean.length < 5) {
+      setInvitePreview(null);
+      return;
+    }
+    try {
+      setJoinGroupError(null);
+      const res = await apiClient.get('/api/groups/invite/' + clean);
+      setInvitePreview(res.data);
+      // Auto-select if matching name exists
+      const match = res.data.unclaimedMembers?.find(
+        (m: any) => m.displayName.trim().toLowerCase() === currentUser?.fullName.trim().toLowerCase()
+      );
+      setSelectedClaimMemberId(match ? match.id : 'NEW');
+    } catch (err: any) {
+      setInvitePreview(null);
+    }
+  };
+
   const handleJoinGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!joinInviteCode.trim()) return;
     try {
       setJoinGroupError(null);
       const res = await apiClient.post('/api/groups/join', {
-        inviteCode: joinInviteCode.trim()
+        inviteCode: joinInviteCode.trim(),
+        claimMemberId: selectedClaimMemberId === 'NEW' ? null : selectedClaimMemberId
       });
       // Refresh user's groups
       await loadUserGroups();
       setSelectedGroup(res.data);
       setGroupTab('expenses');
       setJoinInviteCode('');
+      setInvitePreview(null);
+      setSelectedClaimMemberId('NEW');
       setShowJoinGroupModal(false);
     } catch (err: any) {
       console.error('Failed to join group', err);
@@ -1097,14 +1127,78 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  maxLength={10}
+                  maxLength={12}
                   autoFocus
-                  placeholder="e.g. 7K9X2M"
+                  placeholder="e.g. RSsQuQ0eeI"
                   value={joinInviteCode}
-                  onChange={(e) => setJoinInviteCode(e.target.value.trim())}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-center text-lg tracking-widest font-black uppercase text-emerald-900 focus:bg-white focus:outline-emerald-500"
+                  onChange={(e) => {
+                    const val = e.target.value.trim();
+                    setJoinInviteCode(val);
+                    fetchInvitePreview(val);
+                  }}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-center text-lg tracking-widest font-black text-emerald-900 focus:bg-white focus:outline-emerald-500"
                 />
               </div>
+
+              {/* Live Preview & Claim Slot Selection */}
+              {invitePreview && (
+                <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-emerald-900">Group: {invitePreview.groupName}</span>
+                    <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
+                      {invitePreview.currencyCode}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Who are you in this group?
+                    </label>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 text-xs">
+                      {invitePreview.unclaimedMembers && invitePreview.unclaimedMembers.length > 0 && (
+                        invitePreview.unclaimedMembers.map(m => (
+                          <label
+                            key={m.id}
+                            className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition ${
+                              selectedClaimMemberId === m.id
+                                ? 'bg-white border-emerald-500 text-emerald-900 font-bold shadow-xs'
+                                : 'bg-white/60 border-slate-200 text-slate-700 hover:bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="claimMember"
+                              value={m.id}
+                              checked={selectedClaimMemberId === m.id}
+                              onChange={() => setSelectedClaimMemberId(m.id)}
+                              className="text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="truncate">Claim slot: <strong>{m.displayName}</strong></span>
+                          </label>
+                        ))
+                      )}
+
+                      <label
+                        className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition ${
+                          selectedClaimMemberId === 'NEW'
+                            ? 'bg-white border-emerald-500 text-emerald-900 font-bold shadow-xs'
+                            : 'bg-white/60 border-slate-200 text-slate-700 hover:bg-white'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="claimMember"
+                          value="NEW"
+                          checked={selectedClaimMemberId === 'NEW'}
+                          onChange={() => setSelectedClaimMemberId('NEW')}
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span>Join as new member (<strong>{currentUser.fullName}</strong>)</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {joinGroupError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">

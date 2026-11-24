@@ -98,7 +98,7 @@ public class GroupService {
     }
 
     @Transactional
-    public GroupResponse joinGroup(String inviteCode, UUID userId) {
+    public GroupResponse joinGroup(String inviteCode, UUID userId, UUID claimMemberId) {
         String cleanCode = inviteCode != null ? inviteCode.trim().toUpperCase() : "";
         TripGroup group = tripGroupRepository.findByInviteCode(cleanCode)
                 .orElseThrow(() -> new IllegalArgumentException("Invalid invite code: " + cleanCode));
@@ -111,23 +111,34 @@ public class GroupService {
                 .anyMatch(m -> userId.equals(m.getUserId()));
 
         if (!alreadyMember) {
-            java.util.Optional<GroupMember> matchingPlaceholder = existingMembers.stream()
-                    .filter(m -> m.getUserId() == null && m.getDisplayName().trim().equalsIgnoreCase(user.getFullName().trim()))
-                    .findFirst();
-
-            if (matchingPlaceholder.isPresent()) {
-                GroupMember placeholder = matchingPlaceholder.get();
-                placeholder.setUserId(userId);
-                placeholder.setDisplayName(user.getFullName());
-                groupMemberRepository.save(placeholder);
+            if (claimMemberId != null) {
+                GroupMember target = groupMemberRepository.findById(claimMemberId)
+                        .orElseThrow(() -> new IllegalArgumentException("Selected placeholder not found"));
+                if (target.getUserId() != null) {
+                    throw new IllegalStateException("This member profile has already been claimed");
+                }
+                target.setUserId(userId);
+                target.setDisplayName(user.getFullName());
+                groupMemberRepository.save(target);
             } else {
-                GroupMember newMember = GroupMember.builder()
-                        .group(group)
-                        .userId(userId)
-                        .displayName(user.getFullName())
-                        .role(MemberRole.MEMBER)
-                        .build();
-                groupMemberRepository.save(newMember);
+                java.util.Optional<GroupMember> matchingPlaceholder = existingMembers.stream()
+                        .filter(m -> m.getUserId() == null && m.getDisplayName().trim().equalsIgnoreCase(user.getFullName().trim()))
+                        .findFirst();
+
+                if (matchingPlaceholder.isPresent()) {
+                    GroupMember placeholder = matchingPlaceholder.get();
+                    placeholder.setUserId(userId);
+                    placeholder.setDisplayName(user.getFullName());
+                    groupMemberRepository.save(placeholder);
+                } else {
+                    GroupMember newMember = GroupMember.builder()
+                            .group(group)
+                            .userId(userId)
+                            .displayName(user.getFullName())
+                            .role(MemberRole.MEMBER)
+                            .build();
+                    groupMemberRepository.save(newMember);
+                }
             }
         }
 

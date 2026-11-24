@@ -76,6 +76,7 @@ public class GroupDTOs {
     public static class JoinGroupRequest {
         @NotBlank(message = "Invite code is required")
         private String inviteCode;
+        private UUID claimMemberId;
     }
 
     @Data
