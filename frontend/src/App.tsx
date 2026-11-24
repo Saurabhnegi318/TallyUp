@@ -6,6 +6,7 @@ import {
   PlusCircle, 
   ArrowRight, 
   LogOut, 
+  Wallet,
   ArrowLeft,
   Copy,
   Check,
@@ -579,7 +580,9 @@ export default function App() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-slate-100 px-4">
         <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
           <div className="text-center mb-8">
-            <img src="/favicon.svg" alt="TallyUp Logo" className="w-16 h-16 rounded-2xl mx-auto shadow-lg shadow-emerald-200 mb-3" />
+            <div className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center text-white mx-auto shadow-lg shadow-emerald-200 mb-3">
+              <Wallet className="w-8 h-8" />
+            </div>
             <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">TallyUp</h1>
             <p className="text-gray-500 mt-1.5 text-sm">Lightweight, zero-paywall group expense splitting</p>
 
@@ -707,7 +710,9 @@ export default function App() {
               className="flex items-center gap-2 group cursor-pointer shrink-0"
               title="Home"
             >
-              <img src="/favicon.svg" alt="TallyUp Logo" className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl shadow-md shadow-emerald-200 group-hover:scale-105 transition" />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-emerald-200 group-hover:scale-105 transition">
+                <Wallet className="w-4 h-4 sm:w-5 sm:h-5" />
+              </div>
               <span className={`${selectedGroup ? "hidden md:inline" : "inline"} text-lg sm:text-xl font-black bg-gradient-to-r from-emerald-700 to-teal-700 bg-clip-text text-transparent`}>
                 TallyUp
               </span>
