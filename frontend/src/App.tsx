@@ -185,16 +185,22 @@ export default function App() {
       fetch(url, { mode: 'no-cors' }).catch(() => {});
     });
 
-    // 2. Poll API Gateway health to detect when services are awake
+    // 2. Poll via CORS-enabled public endpoint to accurately detect when services are awake
     let isMounted = true;
     const checkServerHealth = async () => {
       try {
-        await apiClient.get('/actuator/health');
+        await apiClient.get('/api/groups/invite/ping');
         if (isMounted) setServerWarmupState('ready');
-      } catch {
-        if (isMounted) {
-          setServerWarmupState('waking');
-          setTimeout(checkServerHealth, 3000);
+      } catch (err: any) {
+        // Any response from backend (even 400 Bad Request) confirms the gateway & service are awake!
+        const status = err.response?.status;
+        if (status && status !== 502 && status !== 503 && status !== 504) {
+          if (isMounted) setServerWarmupState('ready');
+        } else {
+          if (isMounted) {
+            setServerWarmupState('waking');
+            setTimeout(checkServerHealth, 3000);
+          }
         }
       }
     };
