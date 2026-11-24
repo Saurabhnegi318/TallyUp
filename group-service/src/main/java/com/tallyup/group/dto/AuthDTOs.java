@@ -45,6 +45,14 @@ public class AuthDTOs {
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
+    public static class GoogleAuthRequest {
+        @NotBlank(message = "Google ID Token is required")
+        private String idToken;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     @Builder
     public static class AuthResponse {
         private String token;

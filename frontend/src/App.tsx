@@ -19,6 +19,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { apiClient } from './api/client';
+import { GoogleLogin } from '@react-oauth/google';
 
 interface User {
   userId: string;
@@ -224,6 +225,30 @@ export default function App() {
       }
     }
   }, [selectedGroup]);
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    setAuthError('');
+    try {
+      if (!credentialResponse.credential) {
+        throw new Error('No credential received from Google');
+      }
+      const res = await apiClient.post('/api/groups/auth/google', {
+        idToken: credentialResponse.credential,
+      });
+      const userData: User = {
+        userId: res.data.userId,
+        fullName: res.data.fullName,
+        email: res.data.email,
+        token: res.data.token,
+      };
+      localStorage.setItem('tallyup_token', res.data.token);
+      localStorage.setItem('tallyup_user', JSON.stringify(userData));
+      setCurrentUser(userData);
+    } catch (err: any) {
+      console.error('Google login failed', err);
+      setAuthError(err.response?.data?.message || 'Google sign-in failed. Please try again.');
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -573,6 +598,25 @@ export default function App() {
               {authError}
             </div>
           )}
+
+          {/* Google Sign-In / Sign-Up Button */}
+          <div className="flex justify-center mb-4">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setAuthError('Google sign-in was canceled or failed.')}
+              theme="outline"
+              size="large"
+              shape="pill"
+              text={isLoginMode ? "signin_with" : "signup_with"}
+              width="320"
+            />
+          </div>
+
+          <div className="relative flex py-1 items-center mb-4">
+            <div className="flex-grow border-t border-slate-200"></div>
+            <span className="flex-shrink mx-3 text-[11px] text-slate-400 font-semibold uppercase">Or with email</span>
+            <div className="flex-grow border-t border-slate-200"></div>
+          </div>
 
           <form onSubmit={handleAuth} className="space-y-4">
             {!isLoginMode && (
