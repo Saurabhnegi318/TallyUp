@@ -111,13 +111,24 @@ public class GroupService {
                 .anyMatch(m -> userId.equals(m.getUserId()));
 
         if (!alreadyMember) {
-            GroupMember newMember = GroupMember.builder()
-                    .group(group)
-                    .userId(userId)
-                    .displayName(user.getFullName())
-                    .role(MemberRole.MEMBER)
-                    .build();
-            groupMemberRepository.save(newMember);
+            java.util.Optional<GroupMember> matchingPlaceholder = existingMembers.stream()
+                    .filter(m -> m.getUserId() == null && m.getDisplayName().trim().equalsIgnoreCase(user.getFullName().trim()))
+                    .findFirst();
+
+            if (matchingPlaceholder.isPresent()) {
+                GroupMember placeholder = matchingPlaceholder.get();
+                placeholder.setUserId(userId);
+                placeholder.setDisplayName(user.getFullName());
+                groupMemberRepository.save(placeholder);
+            } else {
+                GroupMember newMember = GroupMember.builder()
+                        .group(group)
+                        .userId(userId)
+                        .displayName(user.getFullName())
+                        .role(MemberRole.MEMBER)
+                        .build();
+                groupMemberRepository.save(newMember);
+            }
         }
 
         return getGroup(group.getId());
