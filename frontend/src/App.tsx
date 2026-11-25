@@ -392,8 +392,17 @@ export default function App() {
       setCurrentUser(userData);
     } catch (err: any) {
       console.error('Native Google sign-in failed', err);
-      const msg = err.response?.data?.message || err.message || 'Google sign-in failed. Please verify configuration.';
-      setAuthError(msg);
+      const msg = err.response?.data?.message || err.message || '';
+      // If user tapped outside or cancelled the Google bottom sheet, do not show error banner
+      if (
+        msg.toLowerCase().includes('cancel') ||
+        msg.toLowerCase().includes('cancelled') ||
+        err?.code === 'USER_CANCELLED' ||
+        err?.code === 16
+      ) {
+        return;
+      }
+      setAuthError(msg || 'Google sign-in failed. Please verify configuration.');
     }
   };
 
