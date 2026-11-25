@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from './api/client';
 import { GoogleLogin } from '@react-oauth/google';
+import { Capacitor } from '@capacitor/core';
 
 interface User {
   userId: string;
@@ -163,6 +164,135 @@ export default function App() {
   const [splitType, setSplitType] = useState<'EQUAL' | 'EXACT' | 'PERCENTAGE'>('EQUAL');
   const [memberSplitValues, setMemberSplitValues] = useState<Record<string, string>>({});
   const [splitError, setSplitError] = useState<string | null>(null);
+
+  // Helper: Default EXACT split values matching total exactly
+  const getDefaultExactSplits = (total: number, memberIds: string[]): Record<string, string> => {
+    if (!memberIds.length || total <= 0) return {};
+    const count = memberIds.length;
+    const baseAmount = Math.floor((total / count) * 100) / 100;
+    const res: Record<string, string> = {};
+    let allocated = 0;
+    memberIds.forEach((id, idx) => {
+      if (idx === count - 1) {
+        const lastVal = Math.max(0, +(total - allocated).toFixed(2));
+        res[id] = lastVal.toFixed(2);
+      } else {
+        res[id] = baseAmount.toFixed(2);
+        allocated += baseAmount;
+      }
+    });
+    return res;
+  };
+
+  // Helper: Rebalance EXACT split when one member amount changes
+  const handleExactAmountChange = (changedId: string, valStr: string, total: number, memberIds: string[]) => {
+    if (total <= 0) {
+      setMemberSplitValues(prev => ({ ...prev, [changedId]: valStr }));
+      return;
+    }
+    const rawVal = parseFloat(valStr);
+    const newVal = isNaN(rawVal) ? 0 : Math.max(0, Math.min(total, rawVal));
+    const otherIds = memberIds.filter(id => id !== changedId);
+
+    if (otherIds.length === 0) {
+      setMemberSplitValues({ [changedId]: total.toFixed(2) });
+      return;
+    }
+
+    const remaining = Math.max(0, +(total - newVal).toFixed(2));
+    const nextValues: Record<string, string> = {
+      [changedId]: valStr === "" ? "" : newVal.toString()
+    };
+
+    if (otherIds.length === 1) {
+      nextValues[otherIds[0]] = remaining.toFixed(2);
+      setMemberSplitValues(nextValues);
+      setSplitError(null);
+      return;
+    }
+
+    // Proportional redistribution among other members
+    const otherCurrent = otherIds.map(id => parseFloat(memberSplitValues[id] || "0") || 0);
+    const otherSum = otherCurrent.reduce((a, b) => a + b, 0);
+
+    let allocated = 0;
+    otherIds.forEach((id, idx) => {
+      if (idx === otherIds.length - 1) {
+        const lastVal = Math.max(0, +(remaining - allocated).toFixed(2));
+        nextValues[id] = lastVal.toFixed(2);
+      } else {
+        const ratio = otherSum > 0 ? otherCurrent[idx] / otherSum : 1 / otherIds.length;
+        const share = Math.max(0, +(remaining * ratio).toFixed(2));
+        nextValues[id] = share.toFixed(2);
+        allocated += share;
+      }
+    });
+
+    setMemberSplitValues(nextValues);
+    setSplitError(null);
+  };
+
+  // Helper: Default PERCENTAGE split values summing to 100%
+  const getDefaultPercentageSplits = (memberIds: string[]): Record<string, string> => {
+    if (!memberIds.length) return {};
+    const count = memberIds.length;
+    const basePct = Math.floor((100 / count) * 10) / 10;
+    const res: Record<string, string> = {};
+    let allocated = 0;
+    memberIds.forEach((id, idx) => {
+      if (idx === count - 1) {
+        const lastPct = Math.max(0, +(100 - allocated).toFixed(1));
+        res[id] = lastPct.toFixed(1);
+      } else {
+        res[id] = basePct.toFixed(1);
+        allocated += basePct;
+      }
+    });
+    return res;
+  };
+
+  // Helper: Rebalance PERCENTAGE split when one member percentage changes
+  const handlePercentageChange = (changedId: string, valStr: string, memberIds: string[]) => {
+    const rawPct = parseFloat(valStr);
+    const newPct = isNaN(rawPct) ? 0 : Math.max(0, Math.min(100, rawPct));
+    const otherIds = memberIds.filter(id => id !== changedId);
+
+    if (otherIds.length === 0) {
+      setMemberSplitValues({ [changedId]: "100.0" });
+      return;
+    }
+
+    const remainingPct = Math.max(0, +(100 - newPct).toFixed(1));
+    const nextValues: Record<string, string> = {
+      [changedId]: valStr === "" ? "" : newPct.toString()
+    };
+
+    if (otherIds.length === 1) {
+      nextValues[otherIds[0]] = remainingPct.toFixed(1);
+      setMemberSplitValues(nextValues);
+      setSplitError(null);
+      return;
+    }
+
+    const otherCurrent = otherIds.map(id => parseFloat(memberSplitValues[id] || "0") || 0);
+    const otherSum = otherCurrent.reduce((a, b) => a + b, 0);
+
+    let allocated = 0;
+    otherIds.forEach((id, idx) => {
+      if (idx === otherIds.length - 1) {
+        const lastVal = Math.max(0, +(remainingPct - allocated).toFixed(1));
+        nextValues[id] = lastVal.toFixed(1);
+      } else {
+        const ratio = otherSum > 0 ? otherCurrent[idx] / otherSum : 1 / otherIds.length;
+        const share = Math.max(0, +(remainingPct * ratio).toFixed(1));
+        nextValues[id] = share.toFixed(1);
+        allocated += share;
+      }
+    });
+
+    setMemberSplitValues(nextValues);
+    setSplitError(null);
+  };
 
   // Settle up modal
   const [showSettleModal, setShowSettleModal] = useState(false);
@@ -632,24 +762,37 @@ export default function App() {
             </div>
           )}
 
-          {/* Google Sign-In / Sign-Up Button */}
-          <div className="flex justify-center mb-4">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setAuthError('Google sign-in was canceled or failed.')}
-              theme="outline"
-              size="large"
-              shape="pill"
-              text={isLoginMode ? "signin_with" : "signup_with"}
-              width="320"
-            />
-          </div>
+          {/* Google Sign-In on Web / Mobile App Notice */}
+          {!Capacitor.isNativePlatform() ? (
+            <>
+              <div className="flex justify-center mb-4">
+                <GoogleLogin
+                  onSuccess={handleGoogleSuccess}
+                  onError={() => setAuthError('Google sign-in was canceled or failed.')}
+                  theme="outline"
+                  size="large"
+                  shape="pill"
+                  text={isLoginMode ? "signin_with" : "signup_with"}
+                  width="320"
+                />
+              </div>
 
-          <div className="relative flex py-1 items-center mb-4">
-            <div className="flex-grow border-t border-slate-200"></div>
-            <span className="flex-shrink mx-3 text-[11px] text-slate-400 font-semibold uppercase">Or with email</span>
-            <div className="flex-grow border-t border-slate-200"></div>
-          </div>
+              <div className="relative flex py-1 items-center mb-4">
+                <div className="flex-grow border-t border-slate-200"></div>
+                <span className="flex-shrink mx-3 text-[11px] text-slate-400 font-semibold uppercase">Or with email</span>
+                <div className="flex-grow border-t border-slate-200"></div>
+              </div>
+            </>
+          ) : (
+            <div className="mb-4 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-center">
+              <p className="text-xs font-semibold text-emerald-900">
+                📲 Mobile App Sign In
+              </p>
+              <p className="text-[11px] text-emerald-700 mt-0.5">
+                Sign in with your registered account email & password below.
+              </p>
+            </div>
+          )}
 
           <form onSubmit={handleAuth} className="space-y-4">
             {!isLoginMode && (
@@ -1554,8 +1697,16 @@ export default function App() {
                     required
                     placeholder="100.00"
                     value={newExpenseAmount}
-                    onChange={(e) => setNewExpenseAmount(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white focus:outline-none"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewExpenseAmount(val);
+                      const totalNum = parseFloat(val) || 0;
+                      if (splitType === 'EXACT' && selectedGroup && totalNum > 0) {
+                        setMemberSplitValues(getDefaultExactSplits(totalNum, selectedGroup.members.map(m => m.id)));
+                      }
+                    }}
+                    onWheel={(e) => (e.target as HTMLElement).blur()}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
                 <div>
@@ -1610,11 +1761,8 @@ export default function App() {
                       setSplitType('EXACT');
                       setSplitError(null);
                       const totalNum = parseFloat(newExpenseAmount) || 0;
-                      if (totalNum > 0 && Object.keys(memberSplitValues).length === 0) {
-                        const even = (totalNum / selectedGroup.members.length).toFixed(2);
-                        const initial: Record<string, string> = {};
-                        selectedGroup.members.forEach(m => initial[m.id] = even);
-                        setMemberSplitValues(initial);
+                      if (selectedGroup && totalNum > 0) {
+                        setMemberSplitValues(getDefaultExactSplits(totalNum, selectedGroup.members.map(m => m.id)));
                       }
                     }}
                     className={`py-2 text-xs font-bold rounded-lg transition cursor-pointer text-center ${
@@ -1630,11 +1778,8 @@ export default function App() {
                     onClick={() => {
                       setSplitType('PERCENTAGE');
                       setSplitError(null);
-                      if (Object.keys(memberSplitValues).length === 0) {
-                        const evenPct = (100 / selectedGroup.members.length).toFixed(1);
-                        const initial: Record<string, string> = {};
-                        selectedGroup.members.forEach(m => initial[m.id] = evenPct);
-                        setMemberSplitValues(initial);
+                      if (selectedGroup) {
+                        setMemberSplitValues(getDefaultPercentageSplits(selectedGroup.members.map(m => m.id)));
                       }
                     }}
                     className={`py-2 text-xs font-bold rounded-lg transition cursor-pointer text-center ${
@@ -1688,14 +1833,17 @@ export default function App() {
                             step="0.01"
                             min="0"
                             placeholder="0.00"
-                            value={memberSplitValues[m.id] || ''}
+                            value={memberSplitValues[m.id] ?? ''}
                             onChange={(e) => {
-                              setMemberSplitValues({
-                                ...memberSplitValues,
-                                [m.id]: e.target.value
-                              });
+                              handleExactAmountChange(
+                                m.id,
+                                e.target.value,
+                                parseFloat(newExpenseAmount) || 0,
+                                selectedGroup.members.map(mem => mem.id)
+                              );
                             }}
-                            className="w-full text-right text-xs font-semibold px-2 py-1 bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-emerald-500"
+                            onWheel={(e) => (e.target as HTMLElement).blur()}
+                            className="w-full text-right text-xs font-semibold px-2 py-1 bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </div>
                       </div>
@@ -1740,14 +1888,16 @@ export default function App() {
                               min="0"
                               max="100"
                               placeholder="0"
-                              value={memberSplitValues[m.id] || ''}
+                              value={memberSplitValues[m.id] ?? ''}
                               onChange={(e) => {
-                                setMemberSplitValues({
-                                  ...memberSplitValues,
-                                  [m.id]: e.target.value
-                                });
+                                handlePercentageChange(
+                                  m.id,
+                                  e.target.value,
+                                  selectedGroup.members.map(mem => mem.id)
+                                );
                               }}
-                              className="w-full text-right text-xs font-semibold px-2 py-1 bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-emerald-500"
+                              onWheel={(e) => (e.target as HTMLElement).blur()}
+                              className="w-full text-right text-xs font-semibold px-2 py-1 bg-slate-50 border border-slate-200 rounded focus:bg-white focus:outline-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <span className="text-xs text-slate-400 font-bold">%</span>
                           </div>
@@ -1833,7 +1983,8 @@ export default function App() {
                   placeholder="0.00"
                   value={settleAmount}
                   onChange={(e) => setSettleAmount(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                  onWheel={(e) => (e.target as HTMLElement).blur()}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
 
