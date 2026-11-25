@@ -374,9 +374,7 @@ export default function App() {
     try {
       const res = await SocialLogin.login({
         provider: 'google',
-        options: {
-          scopes: ['email', 'profile'],
-        },
+        options: {},
       });
       const idToken = (res?.result as any)?.idToken;
       if (!idToken) {
